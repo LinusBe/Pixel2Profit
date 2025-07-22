@@ -100,6 +100,9 @@ class PixelToProfitPipeline:
             # --- Save Artifacts and Get Metric ---
             torch.save(trial_model.state_dict(), trial_dir / "model.pt")
             
+            # NEU: Speichere die Konfiguration für DIESEN spezifischen Trial
+            with open(trial_dir / "config.yaml", 'w') as f:
+                yaml.dump(trial_config, f, sort_keys=False)
             objective_metric_name = self.optimizer.opt_config['objective_metric']
             metric_value = model_metrics.get(objective_metric_name)
 

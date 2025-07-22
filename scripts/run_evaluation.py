@@ -18,6 +18,7 @@ from src.data.splitter import DataSplitter
 from src.data.dataset import ImageDataset
 from src.model.architecture import create_cnn_from_config
 from src.training.trainer import validate_epoch
+from src.optimization.optimizer import HyperparameterOptimizer
 from torch.utils.data import DataLoader
 
 def run_evaluation(run_dir: Path):
@@ -58,8 +59,43 @@ def run_evaluation(run_dir: Path):
     # We only need to generate images for the test set
     chron_config = config['splitting']['chronological']
     test_start_date = pd.to_datetime(chron_config['test_start_date']).tz_localize('UTC')
-    df_for_imaging = df_featured[df_featured.index >= (test_start_date - pd.DateOffset(days=config['imaging']['lookback_period']))]
+    essential_cols = ['open', 'high', 'low', 'close', 'volume']
+    active_feature_keys = config.get('features', {}).keys()
+    cols_to_keep = essential_cols.copy()
+    for col in df_featured.columns:
+        prefix = col.split('_')[0].lower()
+        if prefix in active_feature_keys:
+            cols_to_keep.append(col)
+
+    # Stelle sicher, dass keine Duplikate vorhanden sind und die Reihenfolge erhalten bleibt
+    df_filtered = df_featured[list(dict.fromkeys(cols_to_keep))]
+
+    df_for_imaging = df_filtered[df_filtered.index >= (test_start_date - pd.DateOffset(days=config['imaging']['lookback_period']))]
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     eval_data_dir = run_dir / "final_evaluation_data"
     image_paths, labels, dates = generate_images_from_df(df_for_imaging, config, str(eval_data_dir))
     
@@ -75,17 +111,25 @@ def run_evaluation(run_dir: Path):
         return
     
     print(f"✅ Test set created with {len(test_data['paths'])} samples.")
-
     # --- 3. Load Model and Create DataLoader ---
     print("\n[3/4] Loading model and creating test DataLoader...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    
+
+    # KORREKTUR: Rekonstruiere die exakte Konfiguration des besten Trials
+    # Dies stellt sicher, dass die Modellarchitektur mit den gespeicherten Gewichten übereinstimmt.
+    print("Reconstructing the configuration of the best model...")
+    optimizer_for_reconstruction = HyperparameterOptimizer(config, mode='model_optimization')
+    best_config = optimizer_for_reconstruction.suggest_and_update_config(best_trial)
+
+    # Erstelle den DataLoader und das Modell mit der KORREKTEN Konfiguration
     test_dataset = ImageDataset(test_data['paths'], np.array(test_data['labels']))
     input_shape = test_dataset[0][0].shape
-    
-    model = create_cnn_from_config(config, input_shape)
+
+    model = create_cnn_from_config(best_config, input_shape) # <-- benutze best_config
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
+
+    print("✅ Best model successfully reconstructed and weights loaded.")
 
     test_loader = DataLoader(test_dataset, batch_size=config['training']['batch_size'])
 
