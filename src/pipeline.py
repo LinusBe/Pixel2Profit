@@ -46,7 +46,7 @@ class PixelToProfitPipeline:
         print(f"Computing Device: {self.device}")
         
         self.run_dir = None
-        self.df_raw = None
+        self.df_raw = None # KORREKTUR: Wird jetzt einmal initialisiert
         self.optimizer = None
         print("-" * 80)
 
@@ -232,8 +232,14 @@ class PixelToProfitPipeline:
             return None
         
         batch_size = config.get('training', {}).get('batch_size', 32)
+        # KORREKTUR: num_workers=0 während der Optimierung kann Konflikte vermeiden,
+        # aber wir lassen es auf 2, da die Hauptlast (I/O) jetzt wegfällt.
+        # pin_memory=True ist der Schlüssel für schnellen GPU-Transfer.
+        num_workers = 2 
+        pin_memory = (self.device == "cuda")
+
         dataset = ImageDataset(split_data['paths'], np.array(split_data['labels']))
-        return DataLoader(dataset, batch_size=batch_size, shuffle=(split_type == 'train'), num_workers=2, pin_memory=True)
+        return DataLoader(dataset, batch_size=batch_size, shuffle=(split_type == 'train'), num_workers=num_workers, pin_memory=pin_memory)
 
     def _get_input_shape_from_loader(self, loader: DataLoader) -> Tuple[int, int, int]:
         """Gets the input tensor shape from a DataLoader."""

@@ -285,15 +285,21 @@ def generate_images_from_df(df: pd.DataFrame, config: Dict[str, Any], output_dir
         label = df.iloc[i + lookback - 1]['label']
         tasks.append((i, window_df, label, config, output_dir))
 
-    # --- Execution ---
-    with ProcessPoolExecutor(max_workers=16) as executor:
+    # --- KORREKTUR: Ausführung mit ProcessPoolExecutor für maximale Geschwindigkeit ---
+    # Diese Sektion wird durch die effiziente, parallele Version ersetzt.
+    with ProcessPoolExecutor() as executor:
         results = list(tqdm(executor.map(_create_and_save_image, tasks), total=len(tasks), desc="Generating Images"))
 
     valid_results = [res for res in results if res is not None]
+    if not valid_results:
+        print("Image generation resulted in no valid images.")
+        return [], np.array([]), pd.Index([])
+        
     image_paths = [res[0] for res in valid_results]
     labels = np.array([res[1] for res in valid_results])
     
-    image_indices = [task[0] for task in tasks[:len(valid_results)]]
+    # Korrekte Zuordnung der Datenpunkte zu den Ergebnissen
+    image_indices = [i for i, res in enumerate(results) if res is not None]
     dates = [df.index[i + lookback - 1] for i in image_indices]
     
     print(f"\nSuccessfully generated and saved {len(image_paths)} images.")
@@ -302,3 +308,5 @@ def generate_images_from_df(df: pd.DataFrame, config: Dict[str, Any], output_dir
     
     # Return the paths, labels, and corresponding dates
     return image_paths, labels, pd.to_datetime(dates)
+
+# (Der Rest der Datei, also _create_and_save_image, bleibt gleich)
