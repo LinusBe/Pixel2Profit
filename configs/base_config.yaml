@@ -1,0 +1,165 @@
+# ===================================================================
+#  Pixel-to-Profit: Student Edition - Base Configuration
+# ===================================================================
+# This configuration file controls the core process:
+# 1. Loading data and generating a rich set of features.
+# 2. Converting time-series data into images.
+# 3. Defining the CNN architecture.
+# 4. Setting up the hyperparameter optimization with Optuna over a large search space.
+# ===================================================================
+
+data:
+  # Path to the raw CSV file.
+  raw_csv_path: "data/raw/BTC_daily_historical.csv"
+
+  # Mandatory columns that must be present in the CSV.
+  required_columns:
+    - "date"
+    - "open"
+    - "high"
+    - "low"
+    - "close"
+    - "volume"
+
+  # Name of the timestamp column for UTC conversion.
+  datetime_column: "date"
+
+features:
+  # Define which features to generate. These will be encoded into the images.
+  # The 'use_...' parameters in the optimization search space will control
+  # whether these are actually used in a given trial.
+  ohlc: [{}]
+  volume: [{}]
+  rsi: [{length: 14}]
+  stoch: [{k: 14, d: 3, smooth_k: 3}]
+  ao: [{}]
+  sma: [{length: 20}, {length: 50}]
+  ema: [{length: 20}]
+  macd: [{fast: 12, slow: 26, signal: 9}]
+  vortex: [{length: 14}]
+  bbands: [{length: 20, std: 2}]
+  atr: [{length: 14}]
+  obv: [{}]
+
+imaging:
+  # Number of timesteps (e.g., days) to include in one image.
+  lookback_period: 25
+
+  # Image dimensions. Width is dynamic: lookback_period * pixels_per_day
+  image_height: 256
+  pixels_per_day: 4
+
+  # Master Color Palette: Maps feature *types* to RGB colors.
+  # The CNN will learn to interpret these colors.
+  channel_mapping:
+    ohlc:   [0, 255, 0]   # Green: Price/Volume Action
+    volume: [0, 255, 0]
+    obv:    [0, 255, 0]
+    sma:    [0, 0, 255]   # Blue: Trend/Momentum
+    ema:    [0, 0, 255]
+    macd:   [0, 0, 255]
+    vortex: [0, 0, 255]
+    bbands: [255, 0, 0]   # Red: Volatility/Oscillators
+    atr:    [255, 0, 0]
+    rsi:    [255, 0, 0]
+    stoch:  [255, 0, 0]
+    ao:     [255, 0, 0]
+
+labeling:
+  # Number of timesteps (e.g., days) to look into the future for the label.
+  horizon: 5
+  strategy:
+    type: "binary_classification"
+    binary_classification: {}
+
+splitting:
+  # Defines the data splitting method.
+  method: "chronological"
+
+  # Config for chronological split based on cutoff dates.
+  chronological:
+    train_end_date: "2022-06-30"  # End of the training set.
+    val_end_date: "2022-12-31"    # End of the validation set for Optuna.
+    test_start_date: "2023-01-15" # Start of the final, unseen test set.
+
+training:
+  epochs: 2 # A few more epochs for meaningful training
+  batch_size: 32
+
+  optimizer:
+    type: Adam
+    params:
+      lr: 0.001
+      weight_decay: 0.0001
+
+  early_stopping:
+    enabled: True
+    monitor: "f1_score"
+    patience: 3
+    min_delta: 0.001
+
+model:
+  # Defines the CNN architecture layer by layer.
+  architecture:
+    - {layer: Conv2D, params: {filters: 32, kernel_size: [5, 5]}}
+    - {layer: BatchNormalization}
+    - {layer: LeakyReLU, params: {alpha: 0.01}}
+    - {layer: MaxPool2D, params: {pool_size: [2, 2]}}
+    - {layer: Conv2D, params: {filters: 64, kernel_size: [3, 3]}}
+    - {layer: BatchNormalization}
+    - {layer: LeakyReLU}
+    - {layer: MaxPool2D, params: {pool_size: [2, 2]}}
+    - {layer: Flatten}
+    - {layer: Dense, params: {units: 128}}
+    - {layer: LeakyReLU}
+    - {layer: Dropout, params: {rate: 0.5}}
+    - {layer: Dense, params: {units: 1}}
+
+optimization:
+  # Total number of trials for the Optuna study.
+  n_trials: 2
+
+  # This is the search space from which Optuna will select hyperparameters for each trial.
+  search_space:
+    # --- Feature Selection & Parameters ---
+    use_rsi: {type: categorical, choices: [True, False]}
+    rsi_length: {type: int, low: 10, high: 30}
+    use_stoch: {type: categorical, choices: [True, False]}
+    stoch_k: {type: int, low: 10, high: 20}
+    use_ao: {type: categorical, choices: [True, False]}
+    use_sma: {type: categorical, choices: [True, False]}
+    sma_length_1: {type: int, low: 10, high: 30}
+    use_ema: {type: categorical, choices: [True, False]}
+    ema_length: {type: int, low: 10, high: 30}
+    use_macd: {type: categorical, choices: [True, False]}
+    macd_fast: {type: int, low: 8, high: 15}
+    use_vortex: {type: categorical, choices: [True, False]}
+    vortex_length: {type: int, low: 10, high: 20}
+    use_bbands: {type: categorical, choices: [True, False]}
+    bbands_length: {type: int, low: 15, high: 25}
+    use_atr: {type: categorical, choices: [True, False]}
+    atr_length: {type: int, low: 10, high: 20}
+    use_obv: {type: categorical, choices: [True, False]}
+
+    # --- Data & Image Parameters ---
+    lookback_period: {type: int, low: 20, high: 80, step: 10}
+    horizon: {type: int, low: 3, high: 15, step: 1}
+
+    # --- Architecture Parameters ---
+    filters_block1: {type: categorical, choices: [16, 32, 64]}
+    kernel_size_block1: {type: int, low: 3, high: 7, step: 2}
+    filters_block2: {type: categorical, choices: [64, 128]}
+    kernel_size_block2: {type: int, low: 3, high: 5, step: 2}
+    dense_units: {type: int, low: 64, high: 256, step: 64}
+    dropout_rate: {type: float, low: 0.2, high: 0.7}
+    
+    # --- Training Parameters ---
+    lr: {type: float, low: 1.0e-5, high: 1.0e-3, log: true}
+    batch_size: {type: categorical, choices: [16, 32, 64]}
+    optimizer_type: {type: categorical, choices: ['Adam', 'AdamW', 'RMSprop']}
+
+  # --- Optimization Goal ---
+  model_optimization:
+    objective_metric: 'f1_score'
+    # The search space for this mode is inherited from the main 'search_space' above.
+    search_space: {}

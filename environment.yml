@@ -1,0 +1,31 @@
+name: p2p_env
+channels:
+  - pytorch
+  - nvidia  
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+
+  - pytorch=2.3.1       
+  - torchvision=0.18.1  
+  - torchaudio=2.3.1    
+  - pytorch-cuda=12.1   
+
+  - pandas
+  - numpy
+  - scikit-learn
+  - pyyaml
+  - tqdm
+  - joblib
+  - matplotlib
+  - seaborn
+  - shap
+  - optuna
+
+  - pytest
+  
+ 
+  - pip:
+    - pandas-ta

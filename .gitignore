@@ -1,0 +1,108 @@
+# -----------------------------------------
+# Trainierte Modelle und temporäre Ergebnisse
+# -----------------------------------------
+**/models/**/checkpoints/
+**/models/**/weights/
+**/models/**/runs/
+**/models/**/logs/
+**/models/**/outputs/
+**/models/**/results/
+**/models/**/__pycache__/
+runs/
+# generierte Vorhersagen, Bilder oder Zwischendaten
+data/forecast.csv
+data/_forecast_img/
+data/tmp/
+data/interim/
+data/processed/
+data/predictions/
+data/images/
+Agent.md
+# Bilder aus Candlestick-Encoding
+**/candlestick_images/
+**/pixel_images/
+
+# Optuna Trials oder andere Tuning Logs
+optuna/
+optuna_trials/
+optuna_logs/
+_Latex/
+# Plotly, TensorBoard, W&B, usw.
+tb_logs/
+wandb/
+paper_results/
+# Sicher auch diese entfernen, falls du sie versehentlich vorher getrackt hast:
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.pyc
+# --------------------------------------------------
+# Optional: Ignore all CSVs außer die eine Whitelist
+# --------------------------------------------------
+# Falls du nur genau `data/raw/daily/data.csv` erlauben willst
+*.csv
+!data/raw/daily/data.csv
+*.Zone.Identifier
+
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env
+.venv
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+runs.zip
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# IDEs and editors
+.vscode/
+.idea/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# MLflow artifacts and other logging directories
+mlruns/
+artifacts/
+
+# OS generated files
+.DS_Store
+Thumbs.dbAgent.md
