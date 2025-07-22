@@ -29,38 +29,52 @@ def run_evaluation(run_dir: Path):
     print(f"🚀 Starting Final Evaluation for Run: {run_dir.name}")
     print("=" * 80)
 
-    # --- 1. Load Artifacts from the Optimization Run ---
-    print("\n[1/4] Loading artifacts from run...")
-    config_path = run_dir / "base_config.yaml"
+    # --- 1. Load Artifacts and Reconstruct BEST Config FIRST ---
+    print("\n[1/4] Loading artifacts and reconstructing best configuration...")
+    base_config_path = run_dir / "base_config.yaml"
     study_path = run_dir / "optuna_study.pkl"
-
-    if not config_path.exists() or not study_path.exists():
-        print(f"❌ Error: config.yaml or optuna_study.pkl not found in {run_dir}")
+    
+    if not base_config_path.exists() or not study_path.exists():
+        print(f"❌ Error: base_config.yaml or optuna_study.pkl not found in {run_dir}")
         return
 
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    with open(base_config_path, 'r') as f:
+        base_config = yaml.safe_load(f)
     
     study = joblib.load(study_path)
     best_trial = study.best_trial
     print(f"✅ Best trial found: #{best_trial.number} with value {best_trial.value:.4f}")
+    
+    # Lade die für diesen Trial gespeicherte, exakte Konfiguration
+    best_trial_dir = run_dir / f"trial_{best_trial.number:03d}"
+    best_config_path = best_trial_dir / "config.yaml"
+    
+    if not best_config_path.exists():
+        print(f"❌ Error: The specific config file for the best trial was not found at {best_config_path}")
+        # Fallback: Rekonstruieren, falls das Speichern mal fehlgeschlagen ist
+        print("Attempting to reconstruct config from trial object...")
+        optimizer_for_reconstruction = HyperparameterOptimizer(base_config, mode='model_optimization')
+        best_config = optimizer_for_reconstruction.suggest_and_update_config(best_trial)
+    else:
+        print(f"✅ Loading best model's specific configuration from: {best_config_path}")
+        with open(best_config_path, 'r') as f:
+            best_config = yaml.safe_load(f)
 
-    model_path = run_dir / f"trial_{best_trial.number:03d}" / "model.pt"
+    model_path = best_trial_dir / "model.pt"
     if not model_path.exists():
         print(f"❌ Error: Model file not found at {model_path}")
         return
-    print(f"✅ Best model path: {model_path}")
 
-    # --- 2. Prepare Test Data ---
-    print("\n[2/4] Preparing unseen test data...")
-    df_raw, _ = load_raw_data(config)
-    df_featured = add_features(df_raw.copy(), config)
+    # --- 2. Prepare Test Data using the BEST CONFIG ---
+    print("\n[2/4] Preparing unseen test data using the best trial's configuration...")
+    df_raw, _ = load_raw_data(best_config)
+    df_featured = add_features(df_raw.copy(), best_config)
     
-    # We only need to generate images for the test set
-    chron_config = config['splitting']['chronological']
+    chron_config = best_config['splitting']['chronological']
     test_start_date = pd.to_datetime(chron_config['test_start_date']).tz_localize('UTC')
+    
     essential_cols = ['open', 'high', 'low', 'close', 'volume']
-    active_feature_keys = config.get('features', {}).keys()
+    active_feature_keys = best_config.get('features', {}).keys()
     cols_to_keep = essential_cols.copy()
     for col in df_featured.columns:
         prefix = col.split('_')[0].lower()
@@ -69,40 +83,20 @@ def run_evaluation(run_dir: Path):
 
     # Stelle sicher, dass keine Duplikate vorhanden sind und die Reihenfolge erhalten bleibt
     df_filtered = df_featured[list(dict.fromkeys(cols_to_keep))]
-
-    df_for_imaging = df_filtered[df_filtered.index >= (test_start_date - pd.DateOffset(days=config['imaging']['lookback_period']))]
     
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    lookback_for_test = best_config['imaging']['lookback_period']
+    df_for_imaging = df_filtered[df_filtered.index >= (test_start_date - pd.DateOffset(days=lookback_for_test))]
+    
     eval_data_dir = run_dir / "final_evaluation_data"
-    image_paths, labels, dates = generate_images_from_df(df_for_imaging, config, str(eval_data_dir))
+    image_paths, labels, dates = generate_images_from_df(df_for_imaging, best_config, str(eval_data_dir))
     
+    if not image_paths:
+        print("❌ Error: No images could be generated for the test set.")
+        return
+
     artifacts_df = pd.DataFrame({'date': dates, 'image_path': image_paths, 'label': labels})
     
-    # Split again to isolate the test set based on the config dates
-    data_splitter = DataSplitter(config)
+    data_splitter = DataSplitter(best_config)
     data_splits = data_splitter.split_data(artifacts_df)
     test_data = data_splits.get('test')
 
@@ -111,41 +105,33 @@ def run_evaluation(run_dir: Path):
         return
     
     print(f"✅ Test set created with {len(test_data['paths'])} samples.")
+
     # --- 3. Load Model and Create DataLoader ---
     print("\n[3/4] Loading model and creating test DataLoader...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    # KORREKTUR: Rekonstruiere die exakte Konfiguration des besten Trials
-    # Dies stellt sicher, dass die Modellarchitektur mit den gespeicherten Gewichten übereinstimmt.
-    print("Reconstructing the configuration of the best model...")
-    optimizer_for_reconstruction = HyperparameterOptimizer(config, mode='model_optimization')
-    best_config = optimizer_for_reconstruction.suggest_and_update_config(best_trial)
-
-    # Erstelle den DataLoader und das Modell mit der KORREKTEN Konfiguration
+    
     test_dataset = ImageDataset(test_data['paths'], np.array(test_data['labels']))
     input_shape = test_dataset[0][0].shape
-
-    model = create_cnn_from_config(best_config, input_shape) # <-- benutze best_config
+    
+    model = create_cnn_from_config(best_config, input_shape)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.to(device)
+    print("✅ Best model's weights loaded successfully.")
 
-    print("✅ Best model successfully reconstructed and weights loaded.")
-
-    test_loader = DataLoader(test_dataset, batch_size=config['training']['batch_size'])
+    test_loader = DataLoader(test_dataset, batch_size=best_config['training']['batch_size'])
 
     # --- 4. Run Evaluation ---
     print("\n[4/4] Evaluating model performance on the test set...")
-    loss_fn = torch.nn.BCEWithLogitsLoss() # Simple loss for evaluation
+    loss_fn = torch.nn.BCEWithLogitsLoss()
     
-    # We can reuse the validate_epoch function for our final test
     final_metrics = validate_epoch(model, test_loader, loss_fn, device)
 
     print("\n" + "="*80)
     print("🏆 FINAL EVALUATION RESULTS 🏆")
     print("="*80)
-    print(f"  - Test Set Loss:     {final_metrics['val_loss']:.4f}")
-    print(f"  - Test Set Accuracy:   {final_metrics['val_accuracy']:.2f}%")
-    print(f"  - Test Set F1-Score:   {final_metrics['f1_score']:.4f}")
+    print(f"  - Test Set Loss:      {final_metrics['val_loss']:.4f}")
+    print(f"  - Test Set Accuracy:  {final_metrics['val_accuracy']:.2f}%")
+    print(f"  - Test Set F1-Score:    {final_metrics['f1_score']:.4f}")
     print("="*80)
 
 
